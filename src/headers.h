@@ -23,5 +23,6 @@ bool headers_empty(header_list *hl);
 header *last_header(header_list *hl);
 
 header_list new_header_list();
+void free_header_list(header_list *hl);
 
 void print_headers(header_list *);

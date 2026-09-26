@@ -1,6 +1,6 @@
 #pragma once
 
-#define BUF_SIZE 8
+#define BUF_SIZE 16
 typedef enum { START, PARSING_HEADERS, PARSING_BODY } parse_state;
 typedef enum { PARSE_CONTINUE, PARSE_ERROR, PARSE_DONE } parse_signal;
 

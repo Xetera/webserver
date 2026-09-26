@@ -14,14 +14,7 @@ request new_req() {
                    .version_number = HTTP_UNKNOWN};
 }
 
-void free_request(request *req) {
-  for (size_t i = 0; i < req->headers.len; i++) {
-    header *h = &req->headers.items[i];
-    free(h->key);
-    free(h->value);
-  }
-  free(req->headers.items);
-}
+void free_request(request *req) { free_header_list(&req->headers); }
 
 void print_request(request *req) {
   printf("%s %s %s\n", req->method, req->path, req->version);

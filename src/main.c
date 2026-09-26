@@ -1,16 +1,10 @@
 #include "parser.h"
 #include "request.h"
 #include <arpa/inet.h>
-#include <ctype.h>
 #include <err.h>
 #include <errno.h>
-#include <stdbool.h>
-#include <stddef.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/uio.h>
 #include <unistd.h>
 
 typedef struct sockaddr sockaddr;
@@ -21,16 +15,25 @@ typedef enum {
   RESPONSE_READY,
 } response_state;
 
-parse_signal receive(int fd, request *req) {
+typedef enum { RECEIVE_ERROR, RECEIVE_DONE, RECEIVE_CONTINUE } receive_signal;
+
+receive_signal receive(int fd, request *req) {
   payload p = {.buf = {0}, .i = 0};
   p.bytes_read = recv(fd, p.buf, BUF_SIZE, 0);
   if (p.bytes_read == -1) {
     printf("Failed to recv data into a buffer %s\n", strerror(errno));
-    return PARSE_ERROR;
+    return RECEIVE_ERROR;
   }
   printf("BUFFER RECEIVED (read=%zd) [%d] (%s)\n", p.bytes_read, BUF_SIZE,
          p.buf);
-  return parse(&p, req);
+  switch (parse(&p, req)) {
+  case PARSE_ERROR:
+    return RECEIVE_ERROR;
+  case PARSE_DONE:
+    return RECEIVE_DONE;
+  case PARSE_CONTINUE:
+    return RECEIVE_CONTINUE;
+  }
 }
 
 int main() {
@@ -62,13 +65,12 @@ int main() {
     }
     printf("Accepting!\n");
     while (1) {
-      parse_signal result = receive(s, &req);
-      if (result == PARSE_ERROR) {
+      receive_signal result = receive(s, &req);
+      if (result == RECEIVE_ERROR) {
         close(s);
-        working = false;
+        free_request(&req);
         break;
-      }
-      if (result == PARSE_DONE) {
+      } else if (result == RECEIVE_DONE) {
         send(s,
              "HTTP/1.1 200 OK\r\n"
              "Content-Type: text/html \r\n"

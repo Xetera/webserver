@@ -11,6 +11,6 @@ typedef struct {
   char *value;
 } header_parse_line;
 
-parse_signal parse_intro(payload *p, request *req);
+parse_signal parse_request_line(payload *p, request *req);
 parse_signal parse_headers(payload *p, request *req);
 parse_signal parse(payload *p, request *req);

@@ -39,3 +39,12 @@ void print_headers(header_list *hl) {
     printf("%s: %s\n", h.key, h.value);
   }
 }
+
+void free_header_list(header_list *hl) {
+  for (size_t i = 0; i < hl->len; i++) {
+    header *h = &hl->items[i];
+    free(h->key);
+    free(h->value);
+  }
+  free(hl->items);
+}

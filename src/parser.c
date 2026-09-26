@@ -65,13 +65,18 @@ static bool accept_tchar(payload *p) {
   }
 }
 
+/**
+ * Moves `i` forward past whitespace in the buffer
+ * and returns whether a non-whitespace character
+ * in the buffer was reacherd
+ */
 static bool discard_whitespace(payload *p) {
   size_t distance = count(&p->buf[p->i], SP);
   p->i += distance;
   return distance == 0;
 }
 
-parse_signal parse_intro(payload *p, request *req) {
+parse_signal parse_request_line(payload *p, request *req) {
   while (p->i < p->bytes_read) {
     const char *curr = &p->buf[p->i];
     switch (req->rl_state) {
@@ -170,6 +175,11 @@ parse_signal parse_headers(payload *p, request *req) {
       } else if (accept_tchar(p)) {
         req->expect_new_header = true;
         req->hl_state = HL_KEY;
+      } else {
+        printf("Expected \\r\\n to either finish reading the headers or start "
+               "another header but got (%c)",
+               p->buf[p->i]);
+        return PARSE_ERROR;
       }
       break;
     }
@@ -182,9 +192,8 @@ parse_signal parse_headers(payload *p, request *req) {
         return PARSE_ERROR;
       }
     }
-    case HL_DONE: {
+    case HL_DONE:
       return PARSE_DONE;
-    }
     }
   }
   return PARSE_CONTINUE;
@@ -195,7 +204,7 @@ parse_signal parse(payload *p, request *req) {
   while (p->i < p->bytes_read) {
     switch (req->state) {
     case START:
-      signal = parse_intro(p, req);
+      signal = parse_request_line(p, req);
       break;
     case PARSING_HEADERS:
       signal = parse_headers(p, req);
@@ -220,7 +229,7 @@ parse_signal parse(payload *p, request *req) {
       break;
     case PARSE_ERROR:
       printf("something went wrong parsing\n");
-      return -1;
+      return PARSE_ERROR;
     }
   }
   return PARSE_CONTINUE;
