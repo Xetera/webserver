@@ -1,0 +1,7 @@
+CompileFlags:
+  Add:
+    # - -std=c99
+    - -Wall
+    - -fsanitize=address
+    - -Werror
+    - -I/header.h

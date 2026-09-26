@@ -1,0 +1,13 @@
+[
+  {
+    "label": "webserver",
+    "adapter": "CodeLLDB",
+    "request": "launch",
+    "program": "$ZED_WORKTREE_ROOT/webserver",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "build": {
+      "command": "make",
+      "args": ["debug"]
+    }
+  }
+]
