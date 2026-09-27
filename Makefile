@@ -1,6 +1,4 @@
-ifeq ($(origin CC),default)
 CC := clang
-endif
 CFLAGS := -Wall -Werror -std=c99
 CPPFLAGS := -MMD -MP
 TARGET := webserver
@@ -29,15 +27,9 @@ debug: clean $(TARGET)
 profile: CFLAGS += -O2 -g -fno-omit-frame-pointer
 profile: clean $(TARGET)
 
-# why do I have to do this bs GET ME VALGRIND ON ARM BRO
-leaks: CFLAGS += -g -O0
-leaks: clean $(TARGET)
-	@MallocStackLogging=1 leaks --atExit -- ./$(TARGET) 2>/dev/null & \
-	sleep 1; sh test.sh >/dev/null; sleep 0.5; pkill -INT -x $(TARGET); wait
-
 clean:
 	rm -rf $(TARGET) $(BUILD_DIR)
 
 -include $(DEPS)
 
-.PHONY: all debug profile leaks clean
+.PHONY: all debug profile clean
