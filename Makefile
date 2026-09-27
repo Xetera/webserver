@@ -9,6 +9,7 @@ SRCS := $(wildcard $(SRC_DIR)/*.c)
 OBJS := $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 DEPS := $(OBJS:.o=.d)
 
+all: CFLAGS += -O3
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
@@ -22,6 +23,9 @@ $(BUILD_DIR):
 
 debug: CFLAGS += -g -O0 -fsanitize=address -fno-omit-frame-pointer
 debug: clean $(TARGET)
+
+profile: CFLAGS += -O2 -g -fno-omit-frame-pointer
+profile: clean $(TARGET)
 
 clean:
 	rm -rf $(TARGET) $(BUILD_DIR)

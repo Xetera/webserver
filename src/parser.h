@@ -1,10 +1,12 @@
 #pragma once
 
 #include "request.h"
+#include <math.h>
 
 #define CR '\r'
 #define LF '\n'
 #define SP ' '
+#define MAX_BODY_SIZE pow(2, 13)
 
 typedef struct {
   char *key;

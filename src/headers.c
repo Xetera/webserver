@@ -1,6 +1,7 @@
 #include "headers.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <strings.h>
 
 void ensure_capacity(header_list *hl) {
   if (hl->len >= hl->capacity) {
@@ -23,6 +24,16 @@ header *new_header(header_list *hl) {
   return &hl->items[at];
 }
 
+const char *header_get(header_list *hl, const char *name) {
+  for (size_t i = 0; i < hl->len; i++) {
+    header *h = &hl->items[i];
+    if (strcasecmp(h->key, name) == 0) {
+      return h->value;
+    }
+  }
+  return NULL;
+}
+
 bool headers_empty(header_list *hl) { return hl->len == 0; }
 header *last_header(header_list *hl) { return &hl->items[hl->len - 1]; }
 
@@ -35,8 +46,8 @@ header_list new_header_list() {
 
 void print_headers(header_list *hl) {
   for (size_t i = 0; i < hl->len; i++) {
-    header h = hl->items[i];
-    printf("%s: %s\n", h.key, h.value);
+    // header h = hl->items[i];
+    // printf("%s: %s\n", h.key, h.value);
   }
 }
 

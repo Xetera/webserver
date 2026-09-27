@@ -18,6 +18,7 @@ typedef struct {
 void ensure_capacity(header_list *hl);
 
 header *new_header(header_list *hl);
+const char *header_get(header_list *hl, const char *name);
 
 bool headers_empty(header_list *hl);
 header *last_header(header_list *hl);

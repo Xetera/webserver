@@ -20,12 +20,12 @@ typedef enum { RECEIVE_ERROR, RECEIVE_DONE, RECEIVE_CONTINUE } receive_signal;
 receive_signal receive(int fd, request *req) {
   payload p = {.buf = {0}, .i = 0};
   p.bytes_read = recv(fd, p.buf, BUF_SIZE, 0);
-  if (p.bytes_read == -1) {
+  if (p.bytes_read <= 0) {
     printf("Failed to recv data into a buffer %s\n", strerror(errno));
     return RECEIVE_ERROR;
   }
-  printf("BUFFER RECEIVED (read=%zd) [%d] (%s)\n", p.bytes_read, BUF_SIZE,
-         p.buf);
+  //   printf("BUFFER RECEIVED (read=%zd) [%d] (%s)\n", p.bytes_read, BUF_SIZE,
+  // p.buf);
   switch (parse(&p, req)) {
   case PARSE_ERROR:
     return RECEIVE_ERROR;
@@ -54,7 +54,7 @@ int main() {
   if (listen(fd, 5) != 0) {
     printf("Failed to listen to socket\n");
   }
-  printf("Listening...\n");
+  // printf("Listening...\n");
   bool working = true;
   while (working) {
     int s = accept(fd, NULL, NULL);
@@ -63,7 +63,7 @@ int main() {
       printf("Could not accept socket connection %s\n", strerror(errno));
       continue;
     }
-    printf("Accepting!\n");
+    // printf("Accepting!\n");
     while (1) {
       receive_signal result = receive(s, &req);
       if (result == RECEIVE_ERROR) {

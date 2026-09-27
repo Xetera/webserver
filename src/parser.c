@@ -15,7 +15,6 @@ static char *append_slice(const char *old, const char *new, size_t n) {
   size_t len = (old == NULL ? 0 : strlen(old)) + n + 1;
   char *out = malloc(len);
   snprintf(out, len, "%s%s", old ?: "", new);
-  out[len - 1] = 0;
   return out;
 }
 
@@ -199,6 +198,43 @@ parse_signal parse_headers(payload *p, request *req) {
   return PARSE_CONTINUE;
 }
 
+parse_signal parse_body(payload *p, request *req) {
+  while (p->i < p->bytes_read) {
+    switch (req->b_state) {
+    case B_START: {
+      // this logic should really not be part of the "parser" imo
+      const char *length = header_get(&req->headers, "content-length");
+      if (length == NULL) {
+        const char *encoding = header_get(&req->headers, "transfer-encoding");
+        if (encoding == NULL) {
+          return PARSE_DONE;
+        }
+        printf("Transfer encoding not implemented.\n");
+        return PARSE_ERROR;
+      }
+      size_t byte_amount = atoi((char *)length);
+      req->body_bytes_remaining = byte_amount;
+      req->body = malloc(sizeof(char) * byte_amount);
+      req->body[byte_amount - 1] = '\0';
+      req->b_state = B_READING;
+      // intentional fallthrough
+    }
+    case B_READING: {
+      int remaining = req->body_bytes_remaining - req->body_bytes_read;
+      if (remaining <= 0) {
+        return PARSE_DONE;
+      }
+
+      size_t copy_amount = p->bytes_read - p->i;
+      memcpy(&req->body[req->body_bytes_read], &p->buf[p->i], copy_amount);
+      req->body_bytes_read += copy_amount;
+      break;
+    }
+    }
+  }
+  return PARSE_CONTINUE;
+}
+
 parse_signal parse(payload *p, request *req) {
   parse_signal signal;
   while (p->i < p->bytes_read) {
@@ -211,7 +247,7 @@ parse_signal parse(payload *p, request *req) {
       break;
     case PARSING_BODY:
       // finishing here for now
-      signal = PARSE_DONE;
+      signal = parse_body(p, req);
       break;
     }
     switch (signal) {
@@ -222,7 +258,6 @@ parse_signal parse(payload *p, request *req) {
         req->state = PARSING_HEADERS;
       } else if (req->state == PARSING_HEADERS) {
         req->state = PARSING_BODY;
-        return PARSE_DONE;
       } else if (req->state == PARSING_BODY) {
         return PARSE_DONE;
       }
