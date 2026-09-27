@@ -4,9 +4,11 @@
 #include "parse_state.h"
 #include <stdbool.h>
 #include <stddef.h>
+#include <sys/_types/_ssize_t.h>
 
 typedef enum {
   HTTP_UNKNOWN = 0,
+  HTTP_1_0,
   HTTP_1_1,
 } protocol_version;
 
@@ -30,7 +32,7 @@ typedef struct {
   // extra space for the \0
   char buf[BUF_SIZE + 1];
   size_t i;
-  size_t bytes_read;
+  ssize_t bytes_read;
 } payload;
 
 request new_req();

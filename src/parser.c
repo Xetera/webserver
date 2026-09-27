@@ -127,11 +127,15 @@ parse_signal parse_request_line(payload *p, request *req) {
       req->rl_state = RL_DONE;
     }
     case RL_DONE:
+      // TODO compare as uint32 instead
       if (strncmp(req->version, "HTTP/1.1", 8) == 0) {
         req->version_number = HTTP_1_1;
+      } else if (strncmp(req->version, "HTTP/1.0", 8) == 0) {
+        req->version_number = HTTP_1_0;
       }
-      printf("method='%s' path='%s' version='%s'\n", req->method, req->path,
-             req->version);
+
+      // printf("method='%s' path='%s' version='%s'\n", req->method,
+      // req->path, req->version);
       return PARSE_DONE;
     }
   }
