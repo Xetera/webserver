@@ -29,7 +29,6 @@ typedef struct {
 typedef struct {
   // extra space for the \0
   char buf[BUF_SIZE + 1];
-  size_t start;
   size_t i;
   size_t bytes_read;
 } payload;

@@ -22,7 +22,10 @@ static bool read_until(payload *p, char c, char **to_write) {
   const char *curr = &p->buf[p->i];
   const char *needle = strchr(curr, c);
   ptrdiff_t size = needle == NULL ? BUF_SIZE - p->i : needle - curr;
-  *to_write = append_slice(*to_write, curr, size);
+  char *new_string = append_slice(*to_write, curr, size);
+  // could this be done more efficiently?
+  free(*to_write);
+  *to_write = new_string;
   if (needle == NULL) {
     p->i = BUF_SIZE;
     return false;
@@ -201,24 +204,7 @@ parse_signal parse_headers(payload *p, request *req) {
 parse_signal parse_body(payload *p, request *req) {
   while (p->i < p->bytes_read) {
     switch (req->b_state) {
-    case B_START: {
-      // this logic should really not be part of the "parser" imo
-      const char *length = header_get(&req->headers, "content-length");
-      if (length == NULL) {
-        const char *encoding = header_get(&req->headers, "transfer-encoding");
-        if (encoding == NULL) {
-          return PARSE_DONE;
-        }
-        printf("Transfer encoding not implemented.\n");
-        return PARSE_ERROR;
-      }
-      size_t byte_amount = atoi((char *)length);
-      req->body_bytes_remaining = byte_amount;
-      req->body = malloc(sizeof(char) * byte_amount);
-      req->body[byte_amount - 1] = '\0';
-      req->b_state = B_READING;
-      // intentional fallthrough
-    }
+    case B_START:
     case B_READING: {
       int remaining = req->body_bytes_remaining - req->body_bytes_read;
       if (remaining <= 0) {
@@ -244,9 +230,22 @@ parse_signal parse(payload *p, request *req) {
       break;
     case PARSING_HEADERS:
       signal = parse_headers(p, req);
+      const char *length = header_get(&req->headers, "content-length");
+      if (length == NULL) {
+        const char *encoding = header_get(&req->headers, "transfer-encoding");
+        if (encoding == NULL) {
+          return PARSE_DONE;
+        }
+        printf("Transfer encoding not implemented.\n");
+        return PARSE_ERROR;
+      }
+      size_t byte_amount = atoi((char *)length);
+      req->body_bytes_remaining = byte_amount;
+      req->body = malloc(sizeof(char) * byte_amount);
+      req->body[byte_amount - 1] = '\0';
+      req->b_state = B_READING;
       break;
     case PARSING_BODY:
-      // finishing here for now
       signal = parse_body(p, req);
       break;
     }
@@ -257,6 +256,9 @@ parse_signal parse(payload *p, request *req) {
       if (req->state == START) {
         req->state = PARSING_HEADERS;
       } else if (req->state == PARSING_HEADERS) {
+        if (req->body_bytes_remaining == 0) {
+          return PARSE_DONE;
+        }
         req->state = PARSING_BODY;
       } else if (req->state == PARSING_BODY) {
         return PARSE_DONE;

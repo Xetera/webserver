@@ -19,7 +19,7 @@ void ensure_capacity(header_list *hl) {
 header *new_header(header_list *hl) {
   ensure_capacity(hl);
   size_t at = hl->len;
-  hl->items[at] = (header){.key = "", .value = ""};
+  hl->items[at] = (header){.key = NULL, .value = NULL};
   hl->len++;
   return &hl->items[at];
 }

@@ -7,7 +7,10 @@
     "cwd": "$ZED_WORKTREE_ROOT",
     "build": {
       "command": "make",
-      "args": ["debug"]
-    }
-  }
+      "args": ["debug"],
+      "env": {
+        "CC": "/nix/store/32yr8c8r9k1wzrgc9isbla76n1cr8nn1-clang-wrapper-23.1.0/bin/clang",
+      },
+    },
+  },
 ]
