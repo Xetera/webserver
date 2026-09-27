@@ -206,22 +206,14 @@ parse_signal parse_headers(payload *p, request *req) {
 }
 
 parse_signal parse_body(payload *p, request *req) {
-  while (p->i < p->bytes_read) {
-    switch (req->b_state) {
-    case B_START:
-    case B_READING: {
-      int remaining = req->body_bytes_remaining - req->body_bytes_read;
-      if (remaining <= 0) {
-        return PARSE_DONE;
-      }
-
-      size_t copy_amount = p->bytes_read - p->i;
-      memcpy(&req->body[req->body_bytes_read], &p->buf[p->i], copy_amount);
-      req->body_bytes_read += copy_amount;
-      break;
-    }
-    }
+  int remaining = req->body_bytes_remaining - req->body_bytes_read;
+  if (remaining <= 0) {
+    return PARSE_DONE;
   }
+
+  size_t copy_amount = p->bytes_read - p->i;
+  memcpy(&req->body[req->body_bytes_read], &p->buf[p->i], copy_amount);
+  req->body_bytes_read += copy_amount;
   return PARSE_CONTINUE;
 }
 
@@ -234,20 +226,6 @@ parse_signal parse(payload *p, request *req) {
       break;
     case PARSING_HEADERS:
       signal = parse_headers(p, req);
-      const char *length = header_get(&req->headers, "content-length");
-      if (length == NULL) {
-        const char *encoding = header_get(&req->headers, "transfer-encoding");
-        if (encoding == NULL) {
-          return PARSE_DONE;
-        }
-        printf("Transfer encoding not implemented.\n");
-        return PARSE_ERROR;
-      }
-      size_t byte_amount = atoi((char *)length);
-      req->body_bytes_remaining = byte_amount;
-      req->body = malloc(sizeof(char) * byte_amount);
-      req->body[byte_amount - 1] = '\0';
-      req->b_state = B_READING;
       break;
     case PARSING_BODY:
       signal = parse_body(p, req);
@@ -260,9 +238,23 @@ parse_signal parse(payload *p, request *req) {
       if (req->state == START) {
         req->state = PARSING_HEADERS;
       } else if (req->state == PARSING_HEADERS) {
-        if (req->body_bytes_remaining == 0) {
+        const char *length = header_get(&req->headers, "content-length");
+        if (length == NULL) {
+          const char *encoding = header_get(&req->headers, "transfer-encoding");
+          if (encoding == NULL) {
+            return PARSE_DONE;
+          }
+          printf("Transfer encoding not implemented.\n");
+          return PARSE_ERROR;
+        }
+        size_t byte_amount = atoi((char *)length);
+        if (byte_amount == 0) {
           return PARSE_DONE;
         }
+        req->body_bytes_remaining = byte_amount;
+        req->body = malloc(sizeof(char) * byte_amount);
+        req->body[byte_amount - 1] = '\0';
+        req->b_state = B_READING;
         req->state = PARSING_BODY;
       } else if (req->state == PARSING_BODY) {
         return PARSE_DONE;
