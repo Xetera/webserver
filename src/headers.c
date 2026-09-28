@@ -1,4 +1,5 @@
 #include "headers.h"
+#include "debug.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
@@ -46,8 +47,8 @@ header_list new_header_list() {
 
 void print_headers(header_list *hl) {
   for (size_t i = 0; i < hl->len; i++) {
-    // header h = hl->items[i];
-    // printf("%s: %s\n", h.key, h.value);
+    header h = hl->items[i];
+    printf("%s: %s\n", h.key, h.value);
   }
 }
 

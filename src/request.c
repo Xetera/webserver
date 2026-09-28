@@ -8,7 +8,6 @@ request new_req() {
                    .expect_new_header = true,
                    .rl_state = RL_START,
                    .hl_state = HL_KEY,
-                   .b_state = B_START,
                    .body_bytes_read = 0,
                    .body_bytes_remaining = -1,
                    .method = NULL,
@@ -25,7 +24,12 @@ void free_request(request *req) {
   free(req->body);
 }
 
+void reset_request(request *req) {
+  free_request(req);
+  *req = new_req();
+}
+
 void print_request(request *req) {
-  // printf("%s %s %s\n", req->method, req->path, req->version);
-  // print_headers(&req->headers);
+  printf("%s %s %s\n", req->method, req->path, req->version);
+  print_headers(&req->headers);
 }

@@ -134,8 +134,6 @@ parse_signal parse_request_line(payload *p, request *req) {
         req->version_number = HTTP_1_0;
       }
 
-      // printf("method='%s' path='%s' version='%s'\n", req->method,
-      // req->path, req->version);
       return PARSE_DONE;
     }
   }
@@ -214,7 +212,34 @@ parse_signal parse_body(payload *p, request *req) {
   size_t copy_amount = p->bytes_read - p->i;
   memcpy(&req->body[req->body_bytes_read], &p->buf[p->i], copy_amount);
   req->body_bytes_read += copy_amount;
+  p->i += copy_amount;
   return PARSE_CONTINUE;
+}
+
+typedef enum {
+  BODY_PARSE_CONTINUE,
+  BODY_PARSE_ERROR,
+  BODY_PARSE_NOT_NEEDED,
+} body_parser_decision;
+
+static body_parser_decision prepare_body(request *req) {
+  const char *length = header_get(&req->headers, "content-length");
+  if (length == NULL) {
+    const char *encoding = header_get(&req->headers, "transfer-encoding");
+    if (encoding == NULL) {
+      return BODY_PARSE_NOT_NEEDED;
+    }
+    perror("Transfer encoding not implemented.\n");
+    return BODY_PARSE_ERROR;
+  }
+  ssize_t byte_amount = atoi((char *)length);
+  if (byte_amount == 0) {
+    return BODY_PARSE_NOT_NEEDED;
+  }
+  req->body_bytes_remaining = byte_amount;
+  req->body = malloc(sizeof(char) * byte_amount);
+  req->body[byte_amount - 1] = '\0';
+  return BODY_PARSE_CONTINUE;
 }
 
 parse_signal parse(payload *p, request *req) {
@@ -238,24 +263,14 @@ parse_signal parse(payload *p, request *req) {
       if (req->state == START) {
         req->state = PARSING_HEADERS;
       } else if (req->state == PARSING_HEADERS) {
-        const char *length = header_get(&req->headers, "content-length");
-        if (length == NULL) {
-          const char *encoding = header_get(&req->headers, "transfer-encoding");
-          if (encoding == NULL) {
-            return PARSE_DONE;
-          }
-          printf("Transfer encoding not implemented.\n");
+        body_parser_decision decision = prepare_body(req);
+        if (decision == BODY_PARSE_CONTINUE) {
+          req->state = PARSING_BODY;
+        } else if (decision == BODY_PARSE_ERROR) {
           return PARSE_ERROR;
-        }
-        size_t byte_amount = atoi((char *)length);
-        if (byte_amount == 0) {
+        } else if (decision == BODY_PARSE_NOT_NEEDED) {
           return PARSE_DONE;
         }
-        req->body_bytes_remaining = byte_amount;
-        req->body = malloc(sizeof(char) * byte_amount);
-        req->body[byte_amount - 1] = '\0';
-        req->b_state = B_READING;
-        req->state = PARSING_BODY;
       } else if (req->state == PARSING_BODY) {
         return PARSE_DONE;
       }

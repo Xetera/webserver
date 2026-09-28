@@ -18,7 +18,6 @@ typedef struct {
   bool expect_new_header;
   request_line_parse_state rl_state;
   header_line_parse_state hl_state;
-  body_parse_state b_state;
   size_t body_bytes_read;
   size_t body_bytes_remaining;
   char *method;
@@ -36,5 +35,6 @@ typedef struct {
 } payload;
 
 request new_req();
+void reset_request(request *req);
 void free_request(request *req);
 void print_request(request *req);

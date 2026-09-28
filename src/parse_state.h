@@ -24,8 +24,3 @@ typedef enum {
   RL_NEWLINE,
   RL_DONE
 } request_line_parse_state;
-
-typedef enum {
-  B_START = 0,
-  B_READING,
-} body_parse_state;

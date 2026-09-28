@@ -21,7 +21,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 $(BUILD_DIR):
 	mkdir -p $@
 
-debug: CFLAGS += -g -O0 -fsanitize=address -fno-omit-frame-pointer
+debug: CFLAGS += -DDEBUG -g -O0 -fsanitize=address -fno-omit-frame-pointer
 debug: clean $(TARGET)
 
 profile: CFLAGS += -O2 -g -fno-omit-frame-pointer
