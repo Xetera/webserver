@@ -1,21 +1,14 @@
 #include "parser.h"
+#include "string.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 static size_t count(const char *buf, char c) {
   size_t i = 0;
   while (buf[i] == c)
     i++;
   return i;
-}
-
-static char *append_slice(const char *old, const char *new, size_t n) {
-  size_t len = (old == NULL ? 0 : strlen(old)) + n + 1;
-  char *out = malloc(len);
-  snprintf(out, len, "%s%s", old ?: "", new);
-  return out;
 }
 
 static bool read_until(payload *p, char c, char **to_write) {
@@ -245,7 +238,7 @@ static body_parser_decision prepare_body(request *req) {
 parse_signal parse(payload *p, request *req) {
   parse_signal signal;
   while (p->i < p->bytes_read) {
-    switch (req->state) {
+    switch (req->parse_state) {
     case START:
       signal = parse_request_line(p, req);
       break;
@@ -255,23 +248,27 @@ parse_signal parse(payload *p, request *req) {
     case PARSING_BODY:
       signal = parse_body(p, req);
       break;
+    case PARSING_FINISHED:
+      return PARSE_DONE;
     }
     switch (signal) {
     case PARSE_CONTINUE:
       break;
     case PARSE_DONE:
-      if (req->state == START) {
-        req->state = PARSING_HEADERS;
-      } else if (req->state == PARSING_HEADERS) {
+      if (req->parse_state == START) {
+        req->parse_state = PARSING_HEADERS;
+      } else if (req->parse_state == PARSING_HEADERS) {
         body_parser_decision decision = prepare_body(req);
         if (decision == BODY_PARSE_CONTINUE) {
-          req->state = PARSING_BODY;
+          req->parse_state = PARSING_BODY;
         } else if (decision == BODY_PARSE_ERROR) {
           return PARSE_ERROR;
         } else if (decision == BODY_PARSE_NOT_NEEDED) {
+          req->parse_state = PARSING_FINISHED;
           return PARSE_DONE;
         }
-      } else if (req->state == PARSING_BODY) {
+      } else if (req->parse_state == PARSING_BODY) {
+        req->parse_state = PARSING_FINISHED;
         return PARSE_DONE;
       }
       break;

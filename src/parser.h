@@ -1,5 +1,6 @@
 #pragma once
 
+#include "payload.h"
 #include "request.h"
 #include <math.h>
 

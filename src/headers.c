@@ -1,5 +1,4 @@
 #include "headers.h"
-#include "debug.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
@@ -15,6 +14,13 @@ void ensure_capacity(header_list *hl) {
     free(hl->items);
     hl->items = new_list;
   }
+}
+
+header *add_header(header_list *hl, const char *key, const char *value) {
+  header *h = new_header(hl);
+  h->key = (char *)key;
+  h->value = (char *)value;
+  return h;
 }
 
 header *new_header(header_list *hl) {

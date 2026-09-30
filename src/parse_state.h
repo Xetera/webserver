@@ -1,7 +1,11 @@
 #pragma once
 
-#define BUF_SIZE 8192
-typedef enum { START, PARSING_HEADERS, PARSING_BODY } parse_state;
+typedef enum {
+  START,
+  PARSING_HEADERS,
+  PARSING_BODY,
+  PARSING_FINISHED
+} parse_state;
 typedef enum { PARSE_CONTINUE, PARSE_ERROR, PARSE_DONE } parse_signal;
 
 typedef enum {
@@ -24,3 +28,9 @@ typedef enum {
   RL_NEWLINE,
   RL_DONE
 } request_line_parse_state;
+
+typedef enum {
+  WSP_START,
+  WSP_MASK_PAYLOAD_LENGTH,
+  WSP_EXTENDED_PAYLOAD_LENGTH
+} ws_parse_state;

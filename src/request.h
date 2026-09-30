@@ -4,6 +4,9 @@
 #include "parse_state.h"
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/_types/_ssize_t.h>
 
 typedef enum {
@@ -13,7 +16,7 @@ typedef enum {
 } protocol_version;
 
 typedef struct {
-  parse_state state;
+  parse_state parse_state;
   header_list headers;
   bool expect_new_header;
   request_line_parse_state rl_state;
@@ -26,13 +29,6 @@ typedef struct {
   char *body;
   protocol_version version_number;
 } request;
-
-typedef struct {
-  // extra space for the \0
-  char buf[BUF_SIZE + 1];
-  size_t i;
-  ssize_t bytes_read;
-} payload;
 
 request new_req();
 void reset_request(request *req);

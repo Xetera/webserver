@@ -1,5 +1,7 @@
+#include "context.h"
 #include "parser.h"
 #include "request.h"
+#include "websocket.h"
 #include <arpa/inet.h>
 #include <err.h>
 #include <errno.h>
@@ -14,7 +16,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-// create
 #define MAX_EVENTS 128
 
 typedef struct sockaddr sockaddr;
@@ -32,8 +33,11 @@ typedef enum {
   RECEIVE_CLOSED
 } receive_signal;
 
-receive_signal receive(int fd, payload *p, request *req,
-                       void (*on_request_finish)(request *req, int socket)) {
+receive_signal receive(context *ctx, void (*on_request_finish)(context *ctx),
+                       void (*on_websocket_receive)(context *ctx)) {
+  payload *p = ctx->payload;
+  request *req = ctx->req;
+  int fd = ctx->socket;
   size_t to_read = BUF_SIZE - p->i;
   p->bytes_read = recv(fd, &p->buf[p->i], to_read, 0);
   if (p->bytes_read == -1) {
@@ -52,21 +56,40 @@ receive_signal receive(int fd, payload *p, request *req,
 
   receive_signal signal;
   // need to loop this to support pipelining
+  // even though literally no client pipelines requests for HTTP/1.1
   do {
-    switch (parse(p, req)) {
-    case PARSE_ERROR:
-      return RECEIVE_ERROR;
-    case PARSE_DONE:
-      signal = RECEIVE_DONE;
-      on_request_finish(req, fd);
-      // there may be the start of a new request
-      // already lined up in this buffer
-      reset_request(req);
-      break;
-    case PARSE_CONTINUE:
-      signal = RECEIVE_CONTINUE;
-      continue;
-      // ...
+    if (ctx->state == CONN_WS) {
+      switch (parse_websocket(ctx->payload, ctx->ws)) {
+      case PARSE_ERROR:
+        return RECEIVE_ERROR;
+      case PARSE_DONE:
+        signal = RECEIVE_DONE;
+        // Client messages must always be masked
+        if (!ctx->ws->header.has_mask)
+          return RECEIVE_ERROR;
+
+        on_websocket_receive(ctx);
+        reset_websocket(ctx->ws);
+        break;
+      case PARSE_CONTINUE:
+        signal = RECEIVE_CONTINUE;
+        continue;
+      }
+    } else {
+      switch (parse(ctx->payload, ctx->req)) {
+      case PARSE_ERROR:
+        return RECEIVE_ERROR;
+      case PARSE_DONE:
+        signal = RECEIVE_DONE;
+        on_request_finish(ctx);
+        // there may be the start of a new request
+        // already lined up in this buffer
+        reset_request(req);
+        break;
+      case PARSE_CONTINUE:
+        signal = RECEIVE_CONTINUE;
+        continue;
+      }
     }
   } while (p->i < p->bytes_read);
   p->i = 0;
@@ -80,52 +103,53 @@ const char *__asan_default_options(void) { return "detect_leaks=1"; }
 #endif
 #endif
 
-typedef struct {
-  request *req;
-  payload *payload;
-  char *out;
-  size_t out_len;
-  size_t out_sent;
-  bool closed;
-} ctx;
-
-payload *new_payload() {
-  payload *p = malloc(sizeof(payload));
-  memset(p->buf, 0, BUF_SIZE + 1);
-  p->bytes_read = 0;
-  p->i = 0;
-  return p;
+static void cleanup_socket(context *ctx) {
+  close(ctx->socket);
+  cleanup_context(ctx);
 }
 
-// static void reset_ctx(ctx *c) {
-//   *c->req = new_req();
-//   c->out_len = 0;
-//   c->out_sent = 0;
-//   c->out = NULL;
-//   c->closed = false;
-//   c->payload = new_payload();
-// }
-
-static void cleanup_ctx(ctx *c) {
-  free_request(c->req);
-  free(c->payload);
-  free(c);
-  // c->closed = true;
+static void on_websocket_message(context *ctx) {
+  printf("Fully parsed a websocket message\n");
+  size_t size;
+  ws_frame_header header = {.fin = 1,
+                            .payload_len = 7,
+                            .opcode = WS_FRAME_TEXT,
+                            .rsv1 = 0,
+                            .rsv2 = 0,
+                            .rsv3 = 0,
+                            .has_mask = false};
+  const unsigned char *out =
+      serialize_websocket_bytes(&header, "Hi lol\n", &size);
+  send(ctx->socket, out, size, 0);
 }
 
-static void cleanup_socket(int socket, ctx *c) {
-  close(socket);
-  cleanup_ctx(c);
-}
-
-static void on_request(request *req, int socket) {
+static void on_request(context *ctx) {
   ssize_t out_len = 113;
-  char *out = "HTTP/1.1 200 OK\r\n"
-              "Content-Type: text/html \r\n"
-              "Content-Length: 47 \r\n\r\n"
-              "<!DOCTYPE html>\n"
-              "<body><div>hi lol</div></body>\n";
-  send(socket, out, out_len, 0);
+  request_classification result = classify_request(ctx);
+  switch (result.key) {
+  case REQUEST_TYPE_WEBSOCKET_PAYLOAD: {
+    break;
+  }
+  case REQUEST_TYPE_WEBSOCKET_UPGRADE: {
+    response res = upgrade_websocket_response(result.websocket_key);
+    size_t size;
+    const char *out = serialize_response(&res, &size);
+    send(ctx->socket, out, size, 0);
+    // upgrading the user to WS
+    ctx->state = CONN_WS;
+    ctx->ws = new_websocket();
+    free((char *)out);
+    break;
+  }
+  default:
+    printf("%u", result.key);
+    char *out = "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/html \r\n"
+                "Content-Length: 47 \r\n\r\n"
+                "<!DOCTYPE html>\n"
+                "<body><div>hi lol</div></body>\n";
+    send(ctx->socket, out, out_len, 0);
+  }
 }
 
 static void on_socket_connect(int socket, struct kevent *event, int kq,
@@ -145,34 +169,28 @@ static void on_socket_connect(int socket, struct kevent *event, int kq,
   fcntl(s, F_SETFL, flags | O_NONBLOCK);
   request *req = malloc(sizeof(request));
   *req = new_req();
-  ctx *c = malloc(sizeof(ctx));
-  *c = (ctx){.req = req,
-             .out_len = 0,
-             .out_sent = 0,
-             .out = NULL,
-             .closed = false,
-             .payload = new_payload()};
-  EV_SET(ev, s, EVFILT_READ, EV_ADD, 0, 0, c);
+  context *ctx = malloc(sizeof(context));
+  *ctx = new_context(s, req);
+  EV_SET(ev, s, EVFILT_READ, EV_ADD, 0, 0, ctx);
   if (kevent(kq, ev, 1, NULL, 0, NULL) < 0) {
     perror("kevent error");
   }
 }
 
 static void on_socket_receive(int socket, struct kevent *event) {
-  ctx *c = (ctx *)event->udata;
+  context *ctx = (context *)event->udata;
   if ((event->flags & EV_EOF) && event->data == 0) {
-    cleanup_socket(socket, c);
+    cleanup_socket(ctx);
     return;
   }
-  switch (receive(socket, c->payload, c->req, on_request)) {
+  switch (receive(ctx, on_request, on_websocket_message)) {
   case RECEIVE_CLOSED:
   case RECEIVE_ERROR:
-    cleanup_socket(socket, c);
     break;
   case RECEIVE_DONE:
     // HTTP/1.0 connections are not persistent
-    if (c->req->version_number == HTTP_1_0) {
-      cleanup_socket(socket, c);
+    if (ctx->req->version_number == HTTP_1_0) {
+      cleanup_socket(ctx);
     }
     break;
   case RECEIVE_CONTINUE:
