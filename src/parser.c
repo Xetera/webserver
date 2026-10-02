@@ -202,6 +202,9 @@ parse_signal parse_body(payload *p, request *req) {
     return PARSE_DONE;
   }
 
+  if (p->i > req->body_bytes_remaining) {
+    return PARSE_ERROR;
+  }
   size_t copy_amount = p->bytes_read - p->i;
   memcpy(&req->body[req->body_bytes_read], &p->buf[p->i], copy_amount);
   req->body_bytes_read += copy_amount;
@@ -225,7 +228,10 @@ static body_parser_decision prepare_body(request *req) {
     perror("Transfer encoding not implemented.\n");
     return BODY_PARSE_ERROR;
   }
-  ssize_t byte_amount = atoi((char *)length);
+  int byte_amount = atoi((char *)length);
+  if (byte_amount < 0) {
+    return BODY_PARSE_ERROR;
+  }
   if (byte_amount == 0) {
     return BODY_PARSE_NOT_NEEDED;
   }

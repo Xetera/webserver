@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 #define MAX_EVENTS 128
+#define WORKER_COUNT 8
 
 typedef struct sockaddr sockaddr;
 typedef struct sockaddr_in sockaddr_in;
@@ -32,6 +33,14 @@ typedef enum {
   RECEIVE_CONTINUE,
   RECEIVE_CLOSED
 } receive_signal;
+
+void send_status(context *ctx, response_status status) {
+  response res = new_res();
+  res.status = status;
+  size_t len;
+  const char *result = serialize_response(&res, &len);
+  send(ctx->socket, result, len, 0);
+}
 
 receive_signal receive(context *ctx, void (*on_request_finish)(context *ctx),
                        void (*on_websocket_receive)(context *ctx)) {
@@ -64,11 +73,14 @@ receive_signal receive(context *ctx, void (*on_request_finish)(context *ctx),
         return RECEIVE_ERROR;
       case PARSE_DONE:
         signal = RECEIVE_DONE;
-        // Client messages must always be masked
-        if (!ctx->ws->header.has_mask)
+        int inconsistency = handle_websocket_inconsistencies(ctx->ws);
+        if (inconsistency > 0) {
           return RECEIVE_ERROR;
+        }
 
         on_websocket_receive(ctx);
+        if (ctx->state == CONN_CLOSING)
+          return RECEIVE_CLOSED;
         reset_websocket(ctx->ws);
         break;
       case PARSE_CONTINUE:
@@ -81,6 +93,19 @@ receive_signal receive(context *ctx, void (*on_request_finish)(context *ctx),
         return RECEIVE_ERROR;
       case PARSE_DONE:
         signal = RECEIVE_DONE;
+        int inconsistency = handle_request_inconsistencies(req);
+        if (inconsistency > 0) {
+          switch (inconsistency) {
+          case REQUEST_FAILURE_NON_NUMERIC_CONTENT_LENGTH:
+          case REQUEST_FAILURE_NEGATIVE_CONTENT_LENGTH:
+          case REQUEST_FAILURE_MISSING_HOST_HEADER:
+          case REQUEST_FAILURE_MULTIPLE_HOST_HEADERS:
+            send_status(ctx, STATUS_400);
+            return RECEIVE_ERROR;
+          default: {
+          }
+          }
+        }
         on_request_finish(ctx);
         // there may be the start of a new request
         // already lined up in this buffer
@@ -109,17 +134,40 @@ static void cleanup_socket(context *ctx) {
 }
 
 static void on_websocket_message(context *ctx) {
-  printf("Fully parsed a websocket message\n");
   size_t size;
+  if (ctx->ws->header.opcode == WS_FRAME_PING) {
+    ws_frame_header header = {.fin = 1,
+                              .payload_len = 0,
+                              .opcode = WS_FRAME_PONG,
+                              .rsv1 = 0,
+                              .rsv2 = 0,
+                              .rsv3 = 0,
+                              .has_mask = false};
+    const unsigned char *out = serialize_websocket_bytes(&header, NULL, &size);
+    send(ctx->socket, out, size, 0);
+    return;
+  } else if (ctx->ws->header.opcode == WS_FRAME_CLOSE) {
+    ws_frame_header header = {.fin = 1,
+                              .payload_len = 0,
+                              .opcode = WS_FRAME_CLOSE,
+                              .rsv1 = 0,
+                              .rsv2 = 0,
+                              .rsv3 = 0,
+                              .has_mask = false};
+    const unsigned char *out = serialize_websocket_bytes(&header, NULL, &size);
+    send(ctx->socket, out, size, 0);
+    ctx->state = CONN_CLOSING;
+    return;
+  }
   ws_frame_header header = {.fin = 1,
-                            .payload_len = 7,
+                            .payload_len = ctx->ws->header.payload_len,
                             .opcode = WS_FRAME_TEXT,
                             .rsv1 = 0,
                             .rsv2 = 0,
                             .rsv3 = 0,
                             .has_mask = false};
   const unsigned char *out =
-      serialize_websocket_bytes(&header, "Hi lol\n", &size);
+      serialize_websocket_bytes(&header, ctx->ws->payload, &size);
   send(ctx->socket, out, size, 0);
 }
 
@@ -186,6 +234,7 @@ static void on_socket_receive(int socket, struct kevent *event) {
   switch (receive(ctx, on_request, on_websocket_message)) {
   case RECEIVE_CLOSED:
   case RECEIVE_ERROR:
+    cleanup_socket(ctx);
     break;
   case RECEIVE_DONE:
     // HTTP/1.0 connections are not persistent
@@ -256,6 +305,14 @@ static bool setopts(int socket) {
   return true;
 }
 
+static pid_t workers[WORKER_COUNT];
+static int worker_index = 0;
+
+static void on_parent_sigint(int sig) {
+  for (int i = 0; i < worker_index; i++)
+    kill(workers[i], SIGTERM);
+}
+
 int main() {
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   sockaddr_in addr = {.sin_family = AF_INET,
@@ -279,15 +336,15 @@ int main() {
     printf("Failed to listen to socket\n");
   }
 
+  signal(SIGINT, on_parent_sigint);
 #ifdef DEBUG
   printf("Running in debug mode\n");
   run_worker(fd);
 #else
   // extra workers don't seem to increase capacity by any amount?
-  int count = 2;
   // size_t count_len = sizeof(count);
   // sysctlbyname("hw.perflevel0.logicalcpu", &count, &count_len, NULL, 0);
-  for (size_t worker = 0; worker < count; worker++) {
+  for (size_t worker = 0; worker < WORKER_COUNT; worker++) {
     fflush(stdout);
     pid_t pid = fork();
     if (pid == -1) {
@@ -297,6 +354,7 @@ int main() {
     if (pid == 0) {
       run_worker(fd);
     }
+    workers[worker_index++] = pid;
   }
   close(fd);
   while (wait(NULL) > 0)

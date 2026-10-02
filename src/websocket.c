@@ -19,7 +19,8 @@ websocket *new_websocket() {
   };
   ws->header_buffer =
       (ws_header_buffer){.bytes_read = 0, .i = 0, .fully_received = false};
-  ws->payload = new_payload();
+  ws->payload = NULL;
+  ws->payload_i = 0;
   return ws;
 }
 
@@ -36,7 +37,8 @@ void reset_websocket(websocket *ws) {
   ws->header_buffer =
       (ws_header_buffer){.bytes_read = 0, .i = 0, .fully_received = false};
   free(ws->payload);
-  ws->payload = new_payload();
+  ws->payload_i = 0;
+  ws->payload = NULL;
 }
 
 response upgrade_websocket_response(const char *websocket_key) {
@@ -192,6 +194,10 @@ parse_signal parse_websocket(payload *p, websocket *ws) {
       return PARSE_CONTINUE;
     }
     populate_header(&ws->header_buffer, &ws->header, size);
+    if (ws->header.payload_len > MAX_PAYLOAD_SIZE) {
+      return PARSE_ERROR;
+    }
+    ws->payload = malloc(sizeof(char) * ws->header.payload_len);
     ws->header_buffer.fully_received = true;
   }
 
@@ -200,14 +206,14 @@ parse_signal parse_websocket(payload *p, websocket *ws) {
     body_copy = ws->header.payload_len;
   }
 
-  memcpy(&ws->payload->buf[ws->payload->i], &p->buf[p->i], body_copy);
+  memcpy(&ws->payload[ws->payload_i], &p->buf[p->i], body_copy);
   p->i += body_copy;
-  ws->payload->i += body_copy;
+  ws->payload_i += body_copy;
 
-  if (ws->payload->i < ws->header.payload_len) {
+  if (ws->payload_i < ws->header.payload_len) {
     return PARSE_CONTINUE;
   }
-  mask_body((unsigned char *)ws->payload->buf, ws->payload->i, &ws->header);
+  mask_body((unsigned char *)ws->payload, ws->payload_i, &ws->header);
   return PARSE_DONE;
 }
 
@@ -220,7 +226,7 @@ const unsigned char *serialize_websocket_bytes(ws_frame_header *header,
   }
   if (header->payload_len > 65535) {
     header_len += 8;
-  } else if (header->payload_len > 128) {
+  } else if (header->payload_len > 125) {
     header_len += 2;
   }
 
@@ -235,7 +241,7 @@ const unsigned char *serialize_websocket_bytes(ws_frame_header *header,
     uint64_t len64 = htonll(header->payload_len);
     memcpy(&buffer[2], &len64, 8);
     offset += 8;
-  } else if (header->payload_len > 128) {
+  } else if (header->payload_len > 125) {
     buffer[1] |= 126;
     uint16_t len16 = htons(header->payload_len);
     memcpy(&buffer[2], &len16, 2);
@@ -254,4 +260,15 @@ const unsigned char *serialize_websocket_bytes(ws_frame_header *header,
     mask_body(&buffer[2 + offset], header->payload_len, header);
   }
   return buffer;
+}
+
+int handle_websocket_inconsistencies(websocket *ws) {
+  // Client messages must always be masked
+  if (!ws->header.has_mask)
+    return WS_FAILURE_MASK_REQUIRED;
+  if (ws->header.rsv1 != 0) {
+    return WS_FAILURE_RESERVED_BITS_NOT_NEEDED;
+  }
+
+  return 0;
 }

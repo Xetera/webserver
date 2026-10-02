@@ -9,6 +9,8 @@ char *serialize_status(response_status status) {
     return "101 Switching Protocols";
   case STATUS_200:
     return "200 OK";
+  case STATUS_400:
+    return "400 Bad Request";
   case STATUS_404:
     return "404 Not Found";
   case STATUS_426:

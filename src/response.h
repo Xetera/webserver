@@ -4,6 +4,7 @@
 typedef enum {
   STATUS_101,
   STATUS_200,
+  STATUS_400,
   STATUS_404,
   STATUS_426,
   STATUS_500,

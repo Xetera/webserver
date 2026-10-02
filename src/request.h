@@ -30,7 +30,15 @@ typedef struct {
   protocol_version version_number;
 } request;
 
+typedef enum request_failure_reasons {
+  REQUEST_FAILURE_MULTIPLE_HOST_HEADERS = 1,
+  REQUEST_FAILURE_MISSING_HOST_HEADER = 2,
+  REQUEST_FAILURE_NEGATIVE_CONTENT_LENGTH = 3,
+  REQUEST_FAILURE_NON_NUMERIC_CONTENT_LENGTH = 4,
+} request_failure_reasons;
+
 request new_req();
 void reset_request(request *req);
 void free_request(request *req);
 void print_request(request *req);
+int handle_request_inconsistencies(request *req);

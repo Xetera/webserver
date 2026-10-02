@@ -13,5 +13,6 @@
   # https://devenv.sh/packages/
   packages = [
     pkgs.llvmPackages_latest.clang
+    pkgs.deno
   ];
 }
